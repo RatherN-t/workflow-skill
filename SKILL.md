@@ -26,6 +26,11 @@ Every round is the same loop: **measure → classify → rule → build → revi
    runs the regression gate (below) before anything touches the expensive real environment.
 7. **Measure again**, publish the result (with screenshots/evidence), including what got worse.
 
+**Every round also starts at least one research agent in parallel** that finds relevant, licence-clear files to improve that
+run: test data, real input/output pairs, sample projects, papers. It saves them into your corpus with a SOURCE.json (url,
+licence, sha256), never executes anything, never blocks the build, and reports what each file can measure. Data is usually
+the bottleneck; every round should grow it, not only the code.
+
 ## Roles
 | Role | Model | Job |
 |---|---|---|

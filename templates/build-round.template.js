@@ -6,7 +6,8 @@ export const meta = {
 // args: { scratch, repo, base (e.g. 'origin/main'), kit (one paragraph: read the toolkit + contract, forbidden actions, golden rules),
 //         slices: [{ id, eng (builder agent type), rev (reviewer agent type), what (rulings), verdict (optional question for a domain
 //                    expert to answer BEFORE code), verdictAgent (optional agent type) }],
-//         suites (the integrator's full suite list, run one at a time), gate (the regression gate command + how it must read), port0 }
+//         suites (the integrator's full suite list, run one at a time), gate (the regression gate command + how it must read), port0,
+//         corpus (where the research agent saves files; set research:false to skip it) }
 const A = args, ROOT = A.repo
 const str = { type: 'string' }, bool = { type: 'boolean' }
 const arr = (i) => ({ type: 'array', items: i })
@@ -29,9 +30,11 @@ async function slice(s, i) {
   return { id: s.id, branch, w, v, ok: !!(v && v.approve) }
 }
 
+// Every round: one research agent in parallel finds files that would measure or improve this round (never blocks the build).
+const research = A.research === false ? Promise.resolve(null) : agent(`${A.kit}\nROLE: research agent. Given this round's slices ${JSON.stringify(A.slices.map((s) => s.what))}, find free, licence-clear files (test data, real input/output pairs, sample projects, papers) that would measure or improve them. Save each into ${A.corpus || 'the project corpus'}/<slug>/ with SOURCE.json {url, licence, sha256}; never execute anything you download. Report what each file can measure.`, { label: 'research: files for this round', phase: 'Build', effort: 'high' })
 const built = await parallel(A.slices.map((s, i) => () => slice(s, i)))
 const ok = built.filter(Boolean).filter((b) => b.ok)
 log(`approved: ${ok.map((b) => b.id).join(', ') || 'none'}; not approved: ${built.filter(Boolean).filter((b) => !b.ok).map((b) => b.id).join(', ') || 'none'}`)
 phase('Integrate')
 const land = ok.length ? await agent(`${A.kit}\nROLE: integrator. Worktree ${ROOT}/.claude/worktrees/round-int on a new branch round/int from ${A.base}. Merge with merge commits, one at a time: ${ok.map((b) => 'origin/' + b.branch).join(', ')}. Wire shared files per handoffs: ${JSON.stringify(built.filter(Boolean).map((b) => ({ id: b.id, ok: b.ok, handoffs: b.w && b.w.handoffs })))}; prove each wired check by reverting it once. Then ONE AT A TIME: ${A.suites}. Then the regression gate: ${A.gate}. Fix integration breaks with a test, or report blocked. Push round/int (never main; the orchestrator opens the PR). Return LAND.`, { label: 'integrate', phase: 'Integrate', schema: LAND, effort: 'high' }) : null
-return { built, land }
+return { built, land, research: await research }
